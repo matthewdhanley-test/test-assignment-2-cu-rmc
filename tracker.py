@@ -1,10 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as pyplot
 import cv2
-import glob
-import time
 import sys
-import io
 import math
 import ConfigParser
 
@@ -76,118 +72,10 @@ def momentXY(c):
     cy = int(M['m01']/M['m00'])
     return cx,cy
 
-def calibrate():
-    #set up the camera feed w/builtin webcam
-    camera = cv2.VideoCapture(0)
-
-    # make and place a window
-    cv2.namedWindow('calibrate')
-    cv2.moveWindow('calibrate',700,0)
-
-    # make and place a window
-    cv2.namedWindow('thresh')
-    cv2.moveWindow('thresh',1200,0)
-
-    # read in settings from config file
-    settings = ConfigSectionMap("Calibrate")
-    hl = settings['hlow']
-    hh = settings['hhigh']
-    sl = settings['slow']
-    sh = settings['shigh']
-    vl = settings['vlow']
-    vh = settings['vhigh']
-    a = settings['area']
-    b = settings['blur']
-
-    # make the trackbars for calibration
-    cv2.createTrackbar('HueLow','calibrate',hl,255,nothing)
-    cv2.createTrackbar('HueHigh','calibrate',hh,255,nothing)
-    cv2.createTrackbar('satLow','calibrate',sl,255,nothing)
-    cv2.createTrackbar('satHigh','calibrate',sh,255,nothing)
-    cv2.createTrackbar('vLow','calibrate',vl,255,nothing)
-    cv2.createTrackbar('vHigh','calibrate',vh,255,nothing)
-    cv2.createTrackbar('area','calibrate',a,100000,nothing)
-    cv2.createTrackbar('blur','calibrate',b,30,nothing)
-    #start up stream loop
-    while(1):
-        ret,image = camera.read()
-
-        # Get values from the endless trackbars
-        hLow = cv2.getTrackbarPos('HueLow','calibrate')
-        hHigh = cv2.getTrackbarPos('HueHigh','calibrate')
-        sLow = cv2.getTrackbarPos('satLow','calibrate')
-        sHigh = cv2.getTrackbarPos('satHigh','calibrate')
-        vLow = cv2.getTrackbarPos('vLow','calibrate')
-        vHigh = cv2.getTrackbarPos('vHigh','calibrate')
-        area = cv2.getTrackbarPos('area','calibrate')
-        blur = cv2.getTrackbarPos('blur','calibrate')
-        if blur % 2 == 0:
-            blur = blur + 1
-
-
-        blurimg = cv2.GaussianBlur(image,(blur,blur),0)
-        cal,mas = mask(blurimg,hLow,hHigh,sLow,sHigh,vLow,vHigh)
-        #threshold the image
-        ret, thresh = cv2.threshold(mas,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-
-        save_text = 's - Save settings to config.ini'
-        quit_text = 'q - quit'
-        cv2.putText(cal,save_text,(0,20),cv2.FONT_HERSHEY_PLAIN,0.9,(0,0,255))
-        cv2.putText(cal,quit_text,(0,40),cv2.FONT_HERSHEY_PLAIN,0.9,(0,0,255))
-
-        #find any countours in the thresholded image
-        im2,contours,hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, \
-                                                  cv2.CHAIN_APPROX_NONE)
-        found_prev = 0
-        found_area = 0
-        if len(contours) != 0:
-            # draw in blue the contours that were found
-            cv2.drawContours(cal, contours, -1, 255, 3)
-
-            #find the biggest area
-            c = max(contours, key = cv2.contourArea)
-            if cv2.contourArea(c) > area:
-                found_prev = found_area
-                found_area = 1
-                #draw a rectangle around the largest contour
-                x,y,w,h = cv2.boundingRect(c)
-                cv2.putText(image,'Tracking',(x,y-10),cv2.FONT_HERSHEY_PLAIN,\
-                            2,(0,0,255),2,cv2.LINE_AA)
-
-                # get the center of the largest centroid as it's probably the object
-                # that we are tracking
-                cx,cy = momentXY(c)
-
-                #plot the center of the countour
-                cv2.circle(image, (cx, cy), 7, (255, 255, 255), -1)
-                # draw the book contour (in green)
-                cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
-            else:
-                found_area = 0
-                found_prev = found_area
-
-
-        # Show the image
-        cv2.imshow("thresh",thresh)
-        cv2.imshow("Live feed",image)
-        cv2.imshow("calibrate",cal)
-
-
-        #check for input to quit or save
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
-            cv2.destroyAllWindows()
-            break
-        elif key == ord("s"):
-            cv2.destroyAllWindows()
-            print "Updating Config File"
-            updateConfig("Calibrate",hLow,hHigh,sLow,sHigh,vLow,vHigh,area,blur)
-            break
-
-    return 1
 
 def control(x,y,imgshape):
     #imgshape - [x,y] shape of the image
+    # this will eventually be used to provide control for a motor mounted webcam
     gain = ConfigSectionMap("Controller")['gain']
     middle = imgshape[0]/2
     mag = int(float(middle-x)/middle * gain)
@@ -196,6 +84,10 @@ def control(x,y,imgshape):
     return mag
 
 def tracking(image,profile):
+    # this function takes in an image and a profile from the config file.
+    # the profile should be created using the calibrate program
+    # this function returns a centroid and an image with a bounding box and the
+    # centroid marked
 
     # read in config file settings
     settings = ConfigSectionMap(profile)
@@ -208,62 +100,69 @@ def tracking(image,profile):
     vHigh = settings['vhigh']
     area = settings['area']
     blur = settings['blur']
+
+    #init the centroid
     cx = 0
     cy = 0
 
-    #set up the camera feed w/builtin webcam
-
-    #start up stream loop
+    # blur the image
     blurimg = cv2.GaussianBlur(image,(blur,blur),0)
+
+    # mask to the parameters defined in config.ini
     res,mas = mask(blurimg,hLow,hHigh,sLow,sHigh,vLow,vHigh)
 
-    #threshold the image using otsu
+    #threshold the image using otsu (binary vision)
     ret, thresh = cv2.threshold(mas,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
     #find any countours in the thresholded image
     im2,contours,hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    found_prev = 0
-    found_area = 0
     if len(contours) != 0:
         # draw in blue the contours that were found
         cv2.drawContours(res, contours, -1, 255, 3)
 
         #find the biggest area
         c = max(contours, key = cv2.contourArea)
-        if cv2.contourArea(c) > area:
-            found_prev = found_area
-            found_area = 1
 
+        # see if contour is large enough to be significant. witout this check,
+        # random noise would be enough to trigger the tracker
+        if cv2.contourArea(c) > area:
             #draw a rectangle around the largest contour
             x,y,w,h = cv2.boundingRect(c)
-            cv2.putText(image,'Tracking',(x,y-10),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255),2,cv2.LINE_AA)
-
-
-            # looking at the moment
-            cx,cy = momentXY(c)
-
-            # controlling left and right camera movement
-            magnitude = control(x,y,image.shape[0:2])
-            if not magnitude == 0:
-                cv2.arrowedLine(image,(cx,cy),(cx+magnitude,cy),(255,0,0),2)
 
             #plot the center of the countour
             cv2.circle(image, (cx, cy), 7, (255, 255, 255), -1)
 
             # draw the book contour (in green)
             cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
+
+            #label the rectangle
+            cv2.putText(image,'Tracking',(x,y-10),cv2.FONT_HERSHEY_PLAIN,2,\
+                        (0,0,255),2,cv2.LINE_AA)
+
+            # get the moment of the blob
+            cx,cy = momentXY(c)
+
+            # controlling left and right camera movement
+            # simulate gain with an arrow
+
+            magnitude = control(x,y,image.shape[0:2])
+
+            if not magnitude == 0:
+                cv2.arrowedLine(image,(cx,cy),(cx+magnitude,cy),(255,0,0),2)
         else:
-            found_area = 0
-            found_prev = found_area
+            pass
 
 
     return image,cx,cy
 
 def connectCentroid(image,cx1,cx2,cy1,cy2):
+    # draws a line between centroids
     cv2.line(image, (cx1,cy1), (cx2,cy2), (255,255,0), 2)
 
 def calcLocalize(theta1,theta2,err):
     # this function calculates location based on camera angles
+    # not currently used but will be used to localize the camera relative to the
+    # blob beacon
 
     # calculate the third angle in the triangle
     theta3 = 180 - theta1 - theta2
@@ -275,30 +174,40 @@ def calcLocalize(theta1,theta2,err):
     #---------------------------------------------------------------------------
 
 def calcAngle(cx1,cx2,cy1,cy2):
+    # this function is WIP
+    # will be used to calculate the angle of the camera relative to the beacon
     xdist = abs(cx1-cx2)
     ydist = abs(cy1-cy2)
     x = ConfigSectionMap("PhysicalProps")["blobseperation"]
     try:
         ratio = float(x)/xdist
     except:
-        ratio = 1
-    print ratio
+        # sometimes we divide by zero so big
+        ratio = 100000
     return ratio
 
 
 def main():
-    calibrate()
-
+    # init the camera
     camera = cv2.VideoCapture(0)
 
+    # video loop
     while(1):
+        # get an image
         ret,image = camera.read()
+
+        # track colors from config.ini
         image,cx1,cy1 = tracking(image,"Green2")
         image,cx2,cy2 = tracking(image,"Pink")
+
+        # if tracking the two colors, connect the centroids and do math
         if cx1 and cx2 and cy1 and cy2:
             connectCentroid(image,cx1,cx2,cy1,cy2)
             calcAngle(cx1,cx2,cy1,cy2)
+
+        # visualaize the data
         cv2.imshow("Live",image)
+        
         #check for input to quit
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
