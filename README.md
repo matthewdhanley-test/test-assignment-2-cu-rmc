@@ -2,11 +2,7 @@
 Using simple blob tracking to achieve localization. This was a project created at HackCU Local Hack Day. It is very much so a work in progress. The purpose is to achieve localization using simple markers such as a cluster of multicolored blobs. It is inteneded to be simple so that it is easily manipulated. This program will eventually be transistioned to be implemented with ROS. It's inteneded use is for localization of CU's NASA Robotic Mining Competition Club's robot as a part of autonomy.
 
 ## Dependent upon:
-cv2
-
-numpy
-
-ConfigParser
+[cv2](https://docs.opencv.org/2.4/doc/tutorials/introduction/linux_install/linux_install.html), [numpy](https://www.scipy.org/install.html), and ConfigParser
 
 ## Use calibrate.py to optimize tracking parameters. 
 calibrate.py will update the \[Calibrate] section of "config.ini"
@@ -20,56 +16,41 @@ python calibrate.py
 
 3. Once satisfied, tap "s" on your keyboard. This will save the variables into the \[Calibrate] section of "config.ini"
 
-4. Open config.ini in your favorite text editor. Copy and paste all the entries in the \[Calibrate] section, then rename to a custom name:
-
+4. Open config.ini in your favorite text editor. Copy and paste all the entries in the \[Calibrate] section, then rename to a custom name. Example:
+```
   \[Calibrate]
-  
   hlow = 0
-  
   hhigh = 13
-  
   slow = 41
-  
   shigh = 255
-  
   vlow = 58
-  
   vhigh = 186
-  
   area = 2982
-  
   blur = 31
+  ```
   
   
 **Copy -> Paste** (and change section name)
 
 
-  
-  ~~[Calibrate]~~\[Orange]
-  
+  ```
+  [Orange]
   hlow = 0
-  
   hhigh = 13
-  
   slow = 41
-  
   shigh = 255
-  
   vlow = 58
-  
   vhigh = 186
-  
   area = 2982
-  
   blur = 31
+```
 
 
-
-You now have a new profile ready for use in tracker.py!!!!!
+You now have a new profile ready for use in tracker.py!!!!! The name in brackets (i.e. "Orange") is what should be used in tracker.py as seen in the next step.
 
 
 ## tracker.py
-Change these lines to custom profiles to track two colors (i.e. a color you created using calibrate.py, procedure above):
+Change these lines to custom profiles to track two colors (i.e. a color you created using calibrate.py, procedure above). These lines are currently found in main():
 ```
 image,cx1,cy1 = tracking(image,"Green2")
 image,cx2,cy2 = tracking(image,"Pink")
@@ -89,4 +70,4 @@ Run tracker.py simply by inputting:
 python tracker.py
 ```
 
-Please contact me with errors and/or questions. This is very much so still a WIP.
+**Please contact me with errors and/or questions. This is very much so still a WIP.**
