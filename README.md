@@ -64,10 +64,21 @@ Run calibrate.py simply by inputting:
 ```
 python calibrate.py
 ```
+for the built-in webcam or:
+```
+python calibrate.py -f [filename]
+```
+for a photo specified using a filepath.
+
 
 Run tracker.py simply by inputting:
 ```
 python tracker.py
 ```
+for the built-in webcam or:
+```
+python tracker.py -f [filename]
+```
+for an image file specified using a filepath.
 
 **Please contact me with errors and/or questions. This is very much so still a WIP.**
