@@ -4,7 +4,47 @@ import math
 import ConfigParser
 import sys
 
-def nothing(x):
+
+class Blob(object):
+    def __init__(self, color):
+        '''
+        :param color: string profile name found in config.ini
+        '''
+        self.cx = 0.0
+        self.cy = 0.0
+        self.color = color
+        self.distance = 0.0
+
+        # read in config file settings
+        self.settings = ConfigSectionMap(color)
+        self.hLow = self.settings['hlow']
+        self.hHigh = self.settings['hhigh']
+        self.sLow = self.settings['slow']
+        self.sHigh = self.settings['shigh']
+        self.vLow = self.settings['vlow']
+        self.vHigh = self.settings['vhigh']
+        self.area = self.settings['area']
+        self.blur = self.settings['blur']
+
+    def set_cx(self, cx):
+        """
+        sets x pixel location of centroid
+        :param cx: integer value for x location
+        """
+        self.cx = cx
+
+    def set_cy(self, cy):
+        """
+        sets y pixel location of centroid
+        :param cy: integer value for y location
+        """
+        self.cy = cy
+
+
+def nothing():
+    """
+    doesn't do anything
+    """
     pass
 
 
@@ -28,31 +68,30 @@ def ConfigSectionMap(section):
 def updateConfig(profile,hLow,hHigh,sLow,sHigh,vLow,vHigh,area,blur):
     Config = ConfigParser.RawConfigParser()
     Config.read("config.ini")
-    Config.set('Calibrate','hhigh',hHigh)
-    Config.set('Calibrate','hlow',hLow)
-    Config.set('Calibrate','slow',sLow)
-    Config.set('Calibrate','shigh',sHigh)
-    Config.set('Calibrate','vhigh',vHigh)
-    Config.set('Calibrate','vlow',vLow)
-    Config.set('Calibrate','area',area)
-    Config.set('Calibrate','blur',blur)
+    Config.set(profile, 'hhigh', hHigh)
+    Config.set(profile, 'hlow', hLow)
+    Config.set(profile, 'slow', sLow)
+    Config.set(profile, 'shigh', sHigh)
+    Config.set(profile, 'vhigh', vHigh)
+    Config.set(profile, 'vlow', vLow)
+    Config.set(profile, 'area', area)
+    Config.set(profile, 'blur', blur)
     with open(r'config.ini', 'wb') as configfile:
         Config.write(configfile)
     print "Updated config.ini"
 
 
 def mask(rgbimg,hl,hh,sl,sh,vl,vh):
-    # -------------------------------------------------------------------------------
-    # FUNCTION - mask
-    # Input Parameters:
-    #      rgbimg - red, blue, green channels of an image
-    #      hl - low range for hue in hsv
-    #      hh - high value for hue in hsv
-    #      sl - low for saturation
-    #      sh - high for saturation
-    #      vl - low for v
-    #      vh - high for v
-    # -------------------------------------------------------------------------------
+    """
+    :param rgbimg: red, blue, green channels of an image
+    :param hl: low range for hue in hsv
+    :param hh: high value for hue in hsv
+    :param sl: low for saturation
+    :param sh: high for saturation
+    :param vl: low for v
+    :param vh: high for v
+    :return: res and mask numpy arrays
+    """
     # convert to hsv
     hsv = cv2.cvtColor(rgbimg, cv2.COLOR_BGR2HSV)
 
@@ -87,7 +126,7 @@ def control(x, y, imgshape):
     return mag
 
 
-def tracking(image,profile):
+def tracking(image, profile):
     # this function takes in an image and a profile from the config file.
     # the profile should be created using the calibrate program
     # this function returns a centroid and an image with a bounding box and the
@@ -119,7 +158,7 @@ def tracking(image,profile):
     ret, thresh = cv2.threshold(mas,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
     # find any countours in the thresholded image
-    im2,contours,hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if len(contours) != 0:
         # draw in blue the contours that were found
         cv2.drawContours(res, contours, -1, 255, 3)
@@ -200,8 +239,7 @@ def cameratracking():
     try:
         camera = cv2.VideoCapture(0)
     except:
-        print "Could not set up camera. Exiting..."
-        return
+        RuntimeError('Cannot set up camera')
 
     # video loop
     while True:
@@ -240,7 +278,6 @@ def phototracking(filename):
     image, cx3, cy3 = tracking(image, "Orange")
     image, cx4, cy4 = tracking(image, "Green")
 
-
     # if tracking the two colors, connect the centroids and do math
     if cx1 and cx2 and cy1 and cy2:
         connectCentroid(image, cx1, cx2, cy1, cy2)
@@ -249,7 +286,6 @@ def phototracking(filename):
         connectCentroid(image, cx4, cx1, cy4, cy1)
 
         calcAngle(cx1, cx2, cy1, cy2)
-
 
     while True:
         # visualize the data
@@ -261,29 +297,38 @@ def phototracking(filename):
             cv2.destroyAllWindows()
             break
 
-def main():
-    dict = {}
+
+def parseargs():
+    argdict = {}
     tmp = []
     key = ''
     filename = -1
     for arg in sys.argv:
         if arg[0] == '-':
-            if tmp != []:
-                dict[key] = tmp
+            if tmp:
+                argdict[key] = tmp
                 tmp = []
             key = arg
             if key == '-f':
-                dict[key] = sys.argv[sys.argv.index(key)+1]
-                filename = dict[key]
+                argdict[key] = sys.argv[sys.argv.index(key) + 1]
+                filename = argdict[key]
                 print "Using file: "
                 print filename
                 break
             continue
         tmp.append(arg)
+    return filename
+
+
+def main():
+
+    filename = parseargs()
+
     if filename != -1:
         phototracking(filename)
     else:
         cameratracking()
+
 
 if __name__ == '__main__':
     main()

@@ -72,6 +72,7 @@ def calibrate():
         else:
             image = cv2.imread(filename)
             image = cv2.resize(image, (0, 0), fx=0.2, fy=0.2)
+
         # Get values from the endless trackbars
         hLow = cv2.getTrackbarPos('HueLow','calibrate')
         hHigh = cv2.getTrackbarPos('HueHigh','calibrate')
