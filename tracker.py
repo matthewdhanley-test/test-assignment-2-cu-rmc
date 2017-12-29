@@ -10,10 +10,11 @@ class Blob(object):
         '''
         :param color: string profile name found in config.ini
         '''
-        self.cx = 0.0
-        self.cy = 0.0
+        self.cx = 0
+        self.cy = 0
         self.color = color
         self.distance = 0.0
+        self.tracked = 0  # flag for if being tracked or not
 
         # read in config file settings
         self.settings = ConfigSectionMap(color)
@@ -25,27 +26,6 @@ class Blob(object):
         self.vHigh = self.settings['vhigh']
         self.area = self.settings['area']
         self.blur = self.settings['blur']
-
-    def set_cx(self, cx):
-        """
-        sets x pixel location of centroid
-        :param cx: integer value for x location
-        """
-        self.cx = cx
-
-    def set_cy(self, cy):
-        """
-        sets y pixel location of centroid
-        :param cy: integer value for y location
-        """
-        self.cy = cy
-
-
-def nothing():
-    """
-    doesn't do anything
-    """
-    pass
 
 
 def ConfigSectionMap(section):
@@ -65,42 +45,38 @@ def ConfigSectionMap(section):
     return dict1
 
 
-def updateConfig(profile,hLow,hHigh,sLow,sHigh,vLow,vHigh,area,blur):
+def updateConfig(blob):
     Config = ConfigParser.RawConfigParser()
     Config.read("config.ini")
-    Config.set(profile, 'hhigh', hHigh)
-    Config.set(profile, 'hlow', hLow)
-    Config.set(profile, 'slow', sLow)
-    Config.set(profile, 'shigh', sHigh)
-    Config.set(profile, 'vhigh', vHigh)
-    Config.set(profile, 'vlow', vLow)
-    Config.set(profile, 'area', area)
-    Config.set(profile, 'blur', blur)
+    profile = blob.color
+    Config.set(profile, 'hhigh', blob.hHigh)
+    Config.set(profile, 'hlow', blob.hLow)
+    Config.set(profile, 'slow', blob.sLow)
+    Config.set(profile, 'shigh', blob.sHigh)
+    Config.set(profile, 'vhigh', blob.vHigh)
+    Config.set(profile, 'vlow', blob.vLow)
+    Config.set(profile, 'area', blob.area)
+    Config.set(profile, 'blur', blob.blur)
     with open(r'config.ini', 'wb') as configfile:
         Config.write(configfile)
     print "Updated config.ini"
 
 
-def mask(rgbimg,hl,hh,sl,sh,vl,vh):
+def mask(rgbimg, blob):
     """
     :param rgbimg: red, blue, green channels of an image
-    :param hl: low range for hue in hsv
-    :param hh: high value for hue in hsv
-    :param sl: low for saturation
-    :param sh: high for saturation
-    :param vl: low for v
-    :param vh: high for v
+    :param blob: Blob object
     :return: res and mask numpy arrays
     """
     # convert to hsv
     hsv = cv2.cvtColor(rgbimg, cv2.COLOR_BGR2HSV)
 
     # define lower and upper color limits
-    blueLow = np.array([hl, sl, vl])
-    blueHigh = np.array([hh, sh, vh])
+    colorLow = np.array([blob.hLow, blob.sLow, blob.vLow])
+    colorHigh = np.array([blob.hHigh, blob.sHigh, blob.vHigh])
 
     # create a mask by selecting pixels that fall within range
-    mask = cv2.inRange(hsv, blueLow, blueHigh)
+    mask = cv2.inRange(hsv, colorLow, colorHigh)
 
     # use the mask to reveal the image
     res = cv2.bitwise_and(rgbimg, rgbimg, mask=mask)
@@ -126,39 +102,34 @@ def control(x, y, imgshape):
     return mag
 
 
-def tracking(image, profile):
-    # this function takes in an image and a profile from the config file.
-    # the profile should be created using the calibrate program
-    # this function returns a centroid and an image with a bounding box and the
-    # centroid marked
+def tracking(image, blob):
+    """
+    this function takes in an image and a profile from the config file.
+    the profile should be created using the calibrate program
+    this function returns a centroid and an image with a bounding box and the
+    centroid marked
+    :param image: image file
+    :param profile: profile that is being tracked
+    :return: image, x and y locations of centroid
+    """
 
-    # read in config file settings
-    settings = ConfigSectionMap(profile)
-
-    hLow = settings['hlow']
-    hHigh = settings['hhigh']
-    sLow = settings['slow']
-    sHigh = settings['shigh']
-    vLow = settings['vlow']
-    vHigh = settings['vhigh']
-    area = settings['area']
-    blur = settings['blur']
 
     # init the centroid
-    cx = 0
-    cy = 0
+    cx = blob.cx
+    cy = blob.cy
 
     # blur the image
-    blurimg = cv2.GaussianBlur(image,(blur,blur),0)
+    blurimg = cv2.GaussianBlur(image,(blob.blur,blob.blur),0)
 
     # mask to the parameters defined in config.ini
-    res,mas = mask(blurimg,hLow,hHigh,sLow,sHigh,vLow,vHigh)
+    res, mas = mask(blurimg, blob)
 
     # threshold the image using otsu (binary vision)
     ret, thresh = cv2.threshold(mas,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
     # find any countours in the thresholded image
     im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
     if len(contours) != 0:
         # draw in blue the contours that were found
         cv2.drawContours(res, contours, -1, 255, 3)
@@ -168,15 +139,15 @@ def tracking(image, profile):
 
         # see if contour is large enough to be significant. witout this check,
         # random noise would be enough to trigger the tracker
-        if cv2.contourArea(c) > area:
+        if cv2.contourArea(c) > blob.area:
             # draw a rectangle around the largest contour
             x, y, w, h = cv2.boundingRect(c)
 
             # plot the center of the countour
             cv2.circle(image, (cx, cy), 7, (255, 255, 255), -1)
 
-            # draw the book contour (in green)
-            cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
+            # draw the outlining contour (in green)
+            cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
             # label the rectangle
             cv2.putText(image,'Tracking',(x,y-10),cv2.FONT_HERSHEY_PLAIN,2,\
@@ -184,6 +155,11 @@ def tracking(image, profile):
 
             # get the moment of the blob
             cx, cy = momentXY(c)
+
+            # update the object
+            blob.cx = cx
+            blob.cy = cy
+            blob.tracked = 1
 
             # controlling left and right camera movement
             # simulate gain with an arrow
@@ -193,15 +169,19 @@ def tracking(image, profile):
             if not magnitude == 0:
                 cv2.arrowedLine(image,(cx,cy),(cx+magnitude,cy),(255,0,0),2)
         else:
-            pass
+            # not being tracked
+            blob.tracked = 0
+
+    return image
 
 
-    return image,cx,cy
-
-
-def connectCentroid(image, cx1, cx2, cy1, cy2):
+def connectCentroid(image, bloblist):
     # draws a line between centroids
-    cv2.line(image, (cx1, cy1), (cx2, cy2), (255, 255, 0), 2)
+    for blob1 in bloblist:
+        for blob2 in bloblist:
+            if blob1 != blob2 and blob1.tracked and blob2.tracked:
+                cv2.line(image, (blob1.cx, blob1.cy), (blob2.cx, blob2.cy), (255, 255, 0), 2)
+
 
 
 def calcLocalize(theta1, theta2, err):
@@ -233,7 +213,7 @@ def calcAngle(cx1, cx2, cy1, cy2):
     return ratio
 
 
-def cameratracking():
+def cameratracking(bloblist):
     # init the camera
     print "Running with webcam..."
     try:
@@ -251,13 +231,11 @@ def cameratracking():
             break
 
         # track colors from config.ini
-        image, cx1, cy1 = tracking(image, "Skin")
-        image, cx2, cy2 = tracking(image, "Red")
+        for blob in bloblist:
+            image = tracking(image, blob)
 
         # if tracking the two colors, connect the centroids and do math
-        if cx1 and cx2 and cy1 and cy2:
-            connectCentroid(image, cx1, cx2, cy1, cy2)
-            calcAngle(cx1, cx2, cy1, cy2)
+        connectCentroid(image, bloblist)
 
         # visualize the data
         cv2.imshow("Live", image)
@@ -269,23 +247,14 @@ def cameratracking():
             break
 
 
-def phototracking(filename):
+def phototracking(filename,bloblist):
     image = cv2.imread(filename)
     image = cv2.resize(image, (0, 0), fx=0.2, fy=0.2)
-    # track colors from config.ini
-    image, cx1, cy1 = tracking(image, "Yellow")
-    image, cx2, cy2 = tracking(image, "Red")
-    image, cx3, cy3 = tracking(image, "Orange")
-    image, cx4, cy4 = tracking(image, "Green")
 
-    # if tracking the two colors, connect the centroids and do math
-    if cx1 and cx2 and cy1 and cy2:
-        connectCentroid(image, cx1, cx2, cy1, cy2)
-        connectCentroid(image, cx2, cx3, cy2, cy3)
-        connectCentroid(image, cx3, cx4, cy3, cy4)
-        connectCentroid(image, cx4, cx1, cy4, cy1)
+    for blob in bloblist:
+        image = tracking(image, blob)
 
-        calcAngle(cx1, cx2, cy1, cy2)
+    connectCentroid(image, bloblist)
 
     while True:
         # visualize the data
@@ -322,12 +291,21 @@ def parseargs():
 
 def main():
 
+    # Get any input arguements
     filename = parseargs()
 
+    # Create some Blob objects
+    greenblob = Blob("Green")
+    yellowblob = Blob("Yellow")
+    redblob = Blob("Red")
+
+    # this is a list of blobs created above
+    bloblist = [greenblob, yellowblob, redblob]
+
     if filename != -1:
-        phototracking(filename)
+        phototracking(filename, bloblist)
     else:
-        cameratracking()
+        cameratracking(bloblist)
 
 
 if __name__ == '__main__':
