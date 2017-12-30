@@ -13,9 +13,8 @@ def nothing(nothing):
     """
     pass
 
-def calibrate(blob):
 
-    filename = parseargs()
+def calibrate(blob, filename):
 
     if filename == -1:
         # set up the camera feed w/builtin webcam
@@ -42,7 +41,7 @@ def calibrate(blob):
     cv2.createTrackbar('area', 'calibrate', blob.area, 100000, nothing)
     cv2.createTrackbar('blur', 'calibrate', blob.blur, 30, nothing)
 
-    #create a temp blob object for updating
+    # create a temp blob object for updating
     tmpBlob = Blob(blob.color)
 
     # start up stream loop
@@ -93,6 +92,9 @@ def calibrate(blob):
             c = max(contours, key=cv2.contourArea)
             if cv2.contourArea(c) > tmpBlob.area:
 
+                # set calibrate area
+                tmpBlob.calibrateMass = cv2.contourArea(c)
+
                 # draw a rectangle around the largest contour
                 x, y, w, h = cv2.boundingRect(c)
                 cv2.putText(image,'Tracking',(x,y-10),cv2.FONT_HERSHEY_PLAIN,
@@ -100,7 +102,7 @@ def calibrate(blob):
 
                 # get the center of the largest centroid as it's probably the object
                 # that we are tracking
-                cx,cy = momentXY(c)
+                cx, cy = momentXY(c)
 
                 # plot the center of the countour
                 cv2.circle(image, (cx, cy), 7, (255, 255, 255), -1)
@@ -128,10 +130,29 @@ def calibrate(blob):
 
 def main():
 
-    # Create a Blob object to calibrate
-    blob = Blob("Calibrate")
+    argdict = parseargs()
 
-    calibrate(blob)
+    try:
+        filename = argdict['-f']
+    except KeyError:
+        filename = -1
+
+    profilename = "Calibrate"
+
+    try:
+        profilename = argdict['-u']
+    except KeyError:
+        pass
+    try:
+        profilename = argdict['-n']
+        add_section(profilename)
+    except KeyError:
+        pass
+
+    # Create a Blob object to calibrate
+    blob = Blob(profilename)
+
+    calibrate(blob, filename)
 
 
 if __name__ == '__main__':

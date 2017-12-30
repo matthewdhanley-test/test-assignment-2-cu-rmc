@@ -5,57 +5,38 @@ Using simple blob tracking to achieve localization. This was a project created a
 [cv2](https://docs.opencv.org/2.4/doc/tutorials/introduction/linux_install/linux_install.html), [numpy](https://www.scipy.org/install.html), and ConfigParser
 
 ## Use calibrate.py to optimize tracking parameters. 
-calibrate.py will update the \[Calibrate] section of "config.ini"
-The user can then choose to save this profile as another name, such as \[Pink] as seen in my config.ini
+calibrate.py will update the \[Calibrate] (unless otherwise specified with command line arguments) section of "config.ini"
 ### How this would flow:
-1. Run calibrate.py
+###1. Run calibrate.py
 ```
 python calibrate.py
 ```
-2. Adjust parameters until color is being tracked accurately in the tracking window. Use the theshold and calibrate windows to help optimize.
+###2. Adjust parameters until color is being tracked accurately in the tracking window. Use the theshold and calibrate windows to help optimize.
 
-3. Once satisfied, tap "s" on your keyboard. This will save the variables into the \[Calibrate] section of "config.ini"
+###3. Once satisfied, tap "s" on your keyboard. This will save the variables into the \[Calibrate] section of "config.ini"
 
-4. Open config.ini in your favorite text editor. Copy and paste all the entries in the \[Calibrate] section, then rename to a custom name. Example:
+### Updating/Adding profiles
+To add a profile to the config file, use the command argument \-n. For example, to add a "Blue" section:
 ```
-  \[Calibrate]
-  hlow = 0
-  hhigh = 13
-  slow = 41
-  shigh = 255
-  vlow = 58
-  vhigh = 186
-  area = 2982
-  blur = 31
-  ```
-  
-  
-**Copy -> Paste** (and change section name)
-
-
-  ```
-  [Orange]
-  hlow = 0
-  hhigh = 13
-  slow = 41
-  shigh = 255
-  vlow = 58
-  vhigh = 186
-  area = 2982
-  blur = 31
+python calibrate.py -n Blue
 ```
 
+To update a profile in the config file, use the command line argument \-u. For example, to update "Red" section:
+```
+python calibrate.py -u Red
+```
 
-You now have a new profile ready for use in tracker.py!!!!! The name in brackets (i.e. "Orange") is what should be used in tracker.py as seen in the next step.
+You now have a new profile ready for use in tracker.py!!!!!
 
 
 ## tracker.py
-Change these lines to custom profiles to track two colors (i.e. a color you created using calibrate.py, procedure above). These lines are currently found in main():
+
+To specify profiles to be tracked, change this line to include profiles (i.e. a color you created using calibrate.py, procedure above). This line is currently found in main():
 ```
-image,cx1,cy1 = tracking(image,"Green2")
-image,cx2,cy2 = tracking(image,"Pink")
+# this is a list of blobs
+bloblist = [Blob("Blue"), Blob("Red")]
 ```
-where Green2 and Pink are profiles found in config.ini
+where Blue and Red are profiles found in config.ini. You can add as many profiles (as long as they exist in config.ini) as you would like!
 
 ## Usage
 Simply run by ensuring config.ini, tracker.py, and calibrate.py are in the same directory.

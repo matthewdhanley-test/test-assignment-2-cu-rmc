@@ -3,6 +3,7 @@ import cv2
 import math
 import ConfigParser
 import sys
+import re
 
 
 class Blob(object):
@@ -15,9 +16,15 @@ class Blob(object):
         self.color = color
         self.distance = 0.0
         self.tracked = 0  # flag for if being tracked or not
+        self.apparentMass = 0
+        self.neighbors = {}
 
         # read in config file settings
-        self.settings = ConfigSectionMap(color)
+        try:
+            self.settings = ConfigSectionMap(color)
+        except ConfigParser.NoSectionError as err:
+            print("ERROR: Could not find profile in config.ini: \"" + color + "\"")
+            sys.exit(1)
         self.hLow = self.settings['hlow']
         self.hHigh = self.settings['hhigh']
         self.sLow = self.settings['slow']
@@ -26,6 +33,51 @@ class Blob(object):
         self.vHigh = self.settings['vhigh']
         self.area = self.settings['area']
         self.blur = self.settings['blur']
+        self.calibrateMass = self.settings['calibratemass']
+
+    def percent_visible(self):
+        percent = float(self.apparentMass)/self.calibrateMass
+        return percent
+
+    def add_neighbor(self, blob):
+        n = Neighbor(self, blob)
+        self.neighbors[blob] = n
+
+    def remove_neighbor(self, blob):
+        self.neighbors.pop(blob,None)
+
+    def find_neighbor(self, blob):
+        if blob in self.neighbors:
+            return True
+        else:
+            return False
+
+
+class Neighbor(object):
+    def __init__(self, blob1, blob2):
+        self.angle = self.calc_angle(blob1, blob2)
+        self.home = blob1.color
+        self.neighbor = blob2.color
+        self.distance = self.calc_distance(blob1, blob2)
+        self.xdist = blob1.cx - blob2.cx
+        self.ydist = blob1.cy - blob2.cy
+
+    @staticmethod
+    def calc_angle(blob1, blob2):
+        xdist = blob1.cx - blob2.cx
+        ydist = blob1.cy - blob2.cy
+        try:
+            angle = math.atan(float(ydist) / xdist)
+        except ZeroDivisionError:
+            angle = math.atan(float(ydist) / 0.00001)
+        return angle
+
+    @staticmethod
+    def calc_distance(blob1, blob2):
+        xdist = abs(blob1.cx - blob2.cx)
+        ydist = (blob1.cy - blob2.cy)
+        distance = math.sqrt(xdist ** 2 + ydist ** 2)
+        return distance
 
 
 def ConfigSectionMap(section):
@@ -57,10 +109,29 @@ def updateConfig(blob):
     Config.set(profile, 'vlow', blob.vLow)
     Config.set(profile, 'area', blob.area)
     Config.set(profile, 'blur', blob.blur)
+    Config.set(profile, 'calibratemass', blob.calibrateMass)
     with open(r'config.ini', 'wb') as configfile:
         Config.write(configfile)
     print "Updated config.ini"
 
+
+def add_section(color):
+    Config = ConfigParser.RawConfigParser()
+    Config.read("config.ini")
+    profile = color
+    Config.add_section(profile)
+    Config.set(profile, 'hhigh', 255)
+    Config.set(profile, 'hlow', 0)
+    Config.set(profile, 'slow', 0)
+    Config.set(profile, 'shigh', 255)
+    Config.set(profile, 'vhigh', 255)
+    Config.set(profile, 'vlow', 0)
+    Config.set(profile, 'area', 0)
+    Config.set(profile, 'blur', 0)
+    Config.set(profile, 'calibratemass', 10)
+    with open(r'config.ini', 'wb') as configfile:
+        Config.write(configfile)
+    print "Updated config.ini"
 
 def mask(rgbimg, blob):
     """
@@ -113,13 +184,12 @@ def tracking(image, blob):
     :return: image, x and y locations of centroid
     """
 
-
     # init the centroid
     cx = blob.cx
     cy = blob.cy
 
     # blur the image
-    blurimg = cv2.GaussianBlur(image,(blob.blur,blob.blur),0)
+    blurimg = cv2.GaussianBlur(image,(blob.blur, blob.blur), 0)
 
     # mask to the parameters defined in config.ini
     res, mas = mask(blurimg, blob)
@@ -140,6 +210,10 @@ def tracking(image, blob):
         # see if contour is large enough to be significant. witout this check,
         # random noise would be enough to trigger the tracker
         if cv2.contourArea(c) > blob.area:
+
+            # set what the camera is seeing
+            blob.apparentMass = cv2.contourArea(c)
+
             # draw a rectangle around the largest contour
             x, y, w, h = cv2.boundingRect(c)
 
@@ -164,10 +238,10 @@ def tracking(image, blob):
             # controlling left and right camera movement
             # simulate gain with an arrow
 
-            magnitude = control(x,y,image.shape[0:2])
+            magnitude = control(x, y, image.shape[0:2])
 
             if not magnitude == 0:
-                cv2.arrowedLine(image,(cx,cy),(cx+magnitude,cy),(255,0,0),2)
+                cv2.arrowedLine(image, (cx, cy), (cx+magnitude, cy), (255, 0, 0), 2)
         else:
             # not being tracked
             blob.tracked = 0
@@ -183,34 +257,15 @@ def connectCentroid(image, bloblist):
                 cv2.line(image, (blob1.cx, blob1.cy), (blob2.cx, blob2.cy), (255, 255, 0), 2)
 
 
-
-def calcLocalize(theta1, theta2, err):
-    # this function calculates location based on camera angles
-    # not currently used but will be used to localize the camera relative to the
-    # blob beacon
-
-    # calculate the third angle in the triangle
-    theta3 = 180 - theta1 - theta2
-    x = ConfigSectionMap("PhysicalProps")["cameraseperation"]
-    d1 = math.sin(theta2)/math.sin(theta3)*x
-    d2 = math.sin(theta1)/math.sin(theta3)*x
-    # ---------------------------------------------------------------------------
-    # STOPPED HERE 12/2/17-13:00:00
-    # ---------------------------------------------------------------------------
-
-
-def calcAngle(cx1, cx2, cy1, cy2):
-    # this function is WIP
-    # will be used to calculate the angle of the camera relative to the beacon
-    xdist = abs(cx1-cx2)
-    ydist = abs(cy1-cy2)
-    x = ConfigSectionMap("PhysicalProps")["blobseperation"]
-    try:
-        ratio = float(x)/xdist
-    except:
-        # sometimes we divide by zero so big
-        ratio = 100000
-    return ratio
+def blob_graph(bloblist):
+    for blob1 in bloblist:
+        for blob2 in bloblist:
+            if blob1 != blob2 and not blob1.tracked:
+                if blob1.find_neighbor(blob2):
+                    blob1.remove_neighbor(blob2)
+            elif blob1 != blob2 and blob1.tracked and blob2.tracked:
+                if not blob1.find_neighbor(blob2):
+                    blob1.add_neighbor(blob2)
 
 
 def cameratracking(bloblist):
@@ -236,6 +291,8 @@ def cameratracking(bloblist):
 
         # if tracking the two colors, connect the centroids and do math
         connectCentroid(image, bloblist)
+
+        blob_graph(bloblist)
 
         # visualize the data
         cv2.imshow("Live", image)
@@ -271,36 +328,34 @@ def parseargs():
     argdict = {}
     tmp = []
     key = ''
-    filename = -1
     for arg in sys.argv:
         if arg[0] == '-':
             if tmp:
                 argdict[key] = tmp
                 tmp = []
             key = arg
-            if key == '-f':
-                argdict[key] = sys.argv[sys.argv.index(key) + 1]
-                filename = argdict[key]
-                print "Using file: "
-                print filename
-                break
+            if re.match('-\w',key):
+                try:
+                    argdict[key] = sys.argv[sys.argv.index(key) + 1]
+                except IndexError:
+                    print sys.argv[0] + ": Unexpected or incorrect command line argument"
+                    sys.exit(1)
             continue
         tmp.append(arg)
-    return filename
+    return argdict
 
 
 def main():
 
     # Get any input arguements
-    filename = parseargs()
+    argdict = parseargs()
+    try:
+        filename = argdict['-f']
+    except KeyError:
+        filename = -1
 
-    # Create some Blob objects
-    greenblob = Blob("Green")
-    yellowblob = Blob("Yellow")
-    redblob = Blob("Red")
-
-    # this is a list of blobs created above
-    bloblist = [greenblob, yellowblob, redblob]
+    # This is a list of blobs
+    bloblist = [Blob("Skin"), Blob("Red")]
 
     if filename != -1:
         phototracking(filename, bloblist)
