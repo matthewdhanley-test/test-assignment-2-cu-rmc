@@ -7,13 +7,13 @@ Using simple blob tracking to achieve localization. This was a project created a
 ## Use calibrate.py to optimize tracking parameters. 
 calibrate.py will update the \[Calibrate] (unless otherwise specified with command line arguments) section of "config.ini"
 ### How this would flow:
-###1. Run calibrate.py
+### 1. Run calibrate.py
 ```
 python calibrate.py
 ```
-###2. Adjust parameters until color is being tracked accurately in the tracking window. Use the theshold and calibrate windows to help optimize.
+### 2. Adjust parameters until color is being tracked accurately in the tracking window. Use the theshold and calibrate windows to help optimize.
 
-###3. Once satisfied, tap "s" on your keyboard. This will save the variables into the \[Calibrate] section of "config.ini"
+### 3. Once satisfied, tap "s" on your keyboard. This will save the variables into the \[Calibrate] section of "config.ini"
 
 ### Updating/Adding profiles
 To add a profile to the config file, use the command argument \-n. For example, to add a "Blue" section:
